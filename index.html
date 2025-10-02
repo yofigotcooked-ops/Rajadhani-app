@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ff4d4d">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rajadhani Restaurant - Peravoor</title>
+<style>
+body { font-family: 'Segoe UI', Tahoma, sans-serif; margin:0; padding:20px; background:#fafafa; color:#333; }
+header { display:flex; align-items:center; gap:10px; justify-content:center;
+         padding:20px; border-radius:12px; background:linear-gradient(90deg,#ff4d4d,#ff9999); color:white; margin-bottom:20px; }
+header h1 { margin:0; font-size:26px; }
+header h1 .restaurant-name { color:#fff200; }
+
+h2 { margin-top:10px; color:#444; }
+
+.menu { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:20px; }
+.card { background:#fff; border-radius:16px; padding:15px; text-align:center; box-shadow:0 4px 12px rgba(0,0,0,0.08); transition:0.3s; }
+.card:hover { transform:translateY(-5px); box-shadow:0 6px 15px rgba(0,0,0,0.12); }
+.card img { border-radius:12px; width:100%; height:150px; object-fit:cover; }
+.card h3 { margin:10px 0 5px; }
+.card p { margin:5px 0; }
+
+button { margin-top:8px; padding:8px 16px; border-radius:8px; border:none; cursor:pointer; transition:0.2s; font-weight:600; }
+button.add-btn { background:#1e90ff; color:white; }
+button.add-btn.disabled { background:grey; cursor:not-allowed; }
+button.remove-btn { background:#ff4d4d; color:white; }
+
+#cart, #receipt, #adminPanel, #otpSection { margin-top:30px; padding:20px; border:2px solid #ddd; border-radius:12px; background:#fff; box-shadow:0 3px 8px rgba(0,0,0,0.05); }
+input, select { width:100%; margin:6px 0; padding:10px; border:1px solid #ccc; border-radius:6px; font-size:14px; }
+.error-msg { color:red; font-size:0.75em; margin-top:2px; }
+#adminPanel { display:none; }
+
+#placeOrder { background:#28a745; color:white; font-size:16px; }
+#confirmOtpBtn { background:#1e90ff; color:white; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="restaurant-name">Rajadhani</span> Restaurant - Peravoor</h1>
+</header>
+
+<h2>Menu</h2>
+<div class="menu" id="menu"></div>
+
+<div id="cart">
+<h2>Your Cart</h2>
+<ul id="cartList"></ul>
+<p><strong>Total: ₹<span id="total">0</span></strong></p>
+<input id="name" placeholder="Your Name">
+<div id="nameError" class="error-msg"></div>
+<input id="phone" placeholder="Phone">
+<div id="phoneError" class="error-msg"></div>
+<input id="address" placeholder="Address">
+<div id="addressError" class="error-msg"></div>
+<p><strong>Payment: Cash on Delivery</strong></p>
+<button id="placeOrder">Place Order</button>
+</div>
+
+<div id="otpSection" style="display:none;">
+<h2>Enter OTP</h2>
+<input id="otpInput" placeholder="Enter OTP">
+<button id="confirmOtpBtn">Confirm OTP</button>
+<div id="otpError" class="error-msg"></div>
+</div>
+
+<div id="receipt" style="display:none;">
+<h2>Receipt</h2>
+<ul id="receiptList"></ul>
+<p><strong>Total: ₹<span id="receiptTotal">0</span></strong></p>
+</div>
+
+<div id="adminPanel">
+<h2>Admin Panel</h2>
+<input id="dishName" placeholder="Dish Name">
+<input id="dishDesc" placeholder="Description">
+<input id="dishPrice" type="number" placeholder="Price">
+<input id="dishImage" placeholder="Image URL">
+<select id="dishSizeOption">
+  <option value="none">No Size</option>
+  <option value="size">Size Applicable</option>
+</select>
+<button id="addDishBtn">Add Dish</button>
+<h3>Existing Menu</h3>
+<ul id="adminMenuList"></ul>
+</div>
+
+<script>
+// Initial menu
+let menu = [
+  {name:"Paneer Butter Masala", desc:"Delicious paneer curry", price:250, image:"https://via.placeholder.com/200", sizeApplicable:true},
+  {name:"Veg Biryani", desc:"Spicy vegetable biryani", price:200, image:"https://via.placeholder.com/200", sizeApplicable:true},
+  {name:"Parotta", desc:"Soft layered flatbread", price:15, image:"https://via.placeholder.com/200", sizeApplicable:false}
+];
+
+let cart = [];
+let currentOtp = null;
+
+// Admin access
+const urlParams = new URLSearchParams(window.location.search);
+if(urlParams.get('admin')==='1234'){ document.getElementById('adminPanel').style.display='block'; }
+
+// Render menu
+function renderMenu(){
+  const menuDiv=document.getElementById('menu');
+  menuDiv.innerHTML='';
+  menu.forEach((item)=>{
+    const div=document.createElement('div'); div.className='card';
+    let sizeSelect='';
+    if(item.sizeApplicable){
+      sizeSelect=`<select class="size-select">
+                    <option value="quarter">Quarter</option>
+                    <option value="half">Half</option>
+                    <option value="full">Full</option>
+                  </select>`;
+    }
+    div.innerHTML=`
+      <img src="${item.image}" alt="${item.name}">
+      <h3>${item.name}</h3>
+      <p>${item.desc}</p>
+      <p><strong>₹${item.price}</strong></p>
+      <p>Quantity: <input type="number" min="1" value="1" class="qty-input" style="width:50px"></p>
+      ${sizeSelect}
+      <button class="add-btn">Add</button>
+    `;
+    menuDiv.appendChild(div);
+
+    const btn=div.querySelector('button.add-btn');
+    btn.addEventListener('click', ()=>{
+      const qty=parseInt(div.querySelector('.qty-input').value)||1;
+      let size=item.sizeApplicable?div.querySelector('.size-select').value:'none';
+      cart.push({...item, quantity:qty, chosenSize:size});
+      btn.disabled=true; btn.classList.add('disabled');
+      renderCart();
+    });
+  });
+}
+
+// Render cart
+function renderCart(){
+  const list=document.getElementById('cartList'); list.innerHTML='';
+  let total=0;
+  cart.forEach((i, idx)=>{
+    const li=document.createElement('li');
+    li.innerHTML=`${i.name} ${i.chosenSize!=='none'? '('+i.chosenSize+')':''} x${i.quantity} - ₹${i.price*i.quantity} 
+                  <button class="remove-btn" onclick="removeItem(${idx})">Remove</button>`;
+    list.appendChild(li);
+    total+=i.price*i.quantity;
+  });
+  document.getElementById('total').innerText=total;
+}
+
+// Remove item
+function removeItem(idx){
+  const removed=cart.splice(idx,1)[0]; renderCart();
+  const buttons=document.querySelectorAll('.menu .card button');
+  buttons.forEach(btn=>{
+    if(btn.parentElement.querySelector('h3').innerText===removed.name){ btn.disabled=false; btn.classList.remove('disabled'); }
+  });
+}
+
+// Place order (with OTP)
+document.getElementById('placeOrder').addEventListener('click', ()=>{
+  let name=document.getElementById('name').value.trim();
+  let phone=document.getElementById('phone').value.trim();
+  let address=document.getElementById('address').value.trim();
+  let valid=true;
+  if(name.length<2){document.getElementById('nameError').innerText="Enter a valid name"; valid=false;} else document.getElementById('nameError').innerText="";
+  if(!/^[0-9]{10}$/.test(phone)){document.getElementById('phoneError').innerText="Enter a valid 10-digit number"; valid=false;} else document.getElementById('phoneError').innerText="";
+  if(address.length<5){document.getElementById('addressError').innerText="Enter a valid address"; valid=false;} else document.getElementById('addressError').innerText="";
+  if(!valid||cart.length===0) return;
+
+  currentOtp=Math.floor(1000+Math.random()*9000);
+  alert("Your OTP is: "+currentOtp);
+  document.getElementById('otpSection').style.display='block';
+});
+
+// Confirm OTP
+document.getElementById('confirmOtpBtn').addEventListener('click', ()=>{
+  let otp=document.getElementById('otpInput').value.trim();
+  if(otp!==String(currentOtp)){ document.getElementById('otpError').innerText="Incorrect OTP"; return; }
+  document.getElementById('otpError').innerText="";
+  document.getElementById('otpSection').style.display='none';
+
+  const receipt=document.getElementById('receiptList'); receipt.innerHTML='';
+  let total=0;
+  cart.forEach(i=>{
+    const li=document.createElement('li');
+    li.innerText=`${i.name} ${i.chosenSize!=='none'? '('+i.chosenSize+')':''} x${i.quantity} - ₹${i.price*i.quantity}`;
+    receipt.appendChild(li); total+=i.price*i.quantity;
+  });
+  document.getElementById('receiptTotal').innerText=total;
+  document.getElementById('receipt').style.display='block';
+  cart=[]; renderCart();
+});
+
+// Admin add dish
+document.getElementById('addDishBtn')?.addEventListener('click', ()=>{
+  const name=document.getElementById('dishName').value.trim();
+  const desc=document.getElementById('dishDesc').value.trim();
+  const price=parseInt(document.getElementById('dishPrice').value);
+  const image=document.getElementById('dishImage').value.trim()||"https://via.placeholder.com/200";
+  const sizeOpt=document.getElementById('dishSizeOption').value==="size";
+  if(name&&price){ menu.push({name,desc,price,image,sizeApplicable:sizeOpt}); renderMenu(); }
+});
+renderMenu();
+</script>
+  <script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('service-worker.js')
+      .then(()=>console.log('Service Worker Registered'))
+      .catch(err=>console.log('SW registration failed', err));
+  }
+  </script>
+</body>
+</html>
